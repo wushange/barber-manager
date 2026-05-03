@@ -13,6 +13,7 @@ interface Member {
 }
 
 interface MemberFormData {
+  id?: number;
   name: string;
   phone: string;
   level: string;
@@ -24,8 +25,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("members");
   
-  // 添加会员弹窗状态
-  const [showAddModal, setShowAddModal] = useState(false);
+  // 弹窗状态
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<MemberFormData>({
     name: "",
     phone: "",
@@ -54,9 +56,29 @@ function App() {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === "balance" ? parseFloat(value) || 0 : value,
+      [name]: name === "balance" ? Math.max(0, parseFloat(value) || 0) : value,
     }));
     setFormError("");
+  }
+
+  function openAddModal() {
+    setIsEditing(false);
+    setFormData({ name: "", phone: "", level: "普通", balance: 0 });
+    setFormError("");
+    setShowModal(true);
+  }
+
+  function openEditModal(member: Member) {
+    setIsEditing(true);
+    setFormData({
+      id: member.id,
+      name: member.name,
+      phone: member.phone,
+      level: member.level,
+      balance: member.balance,
+    });
+    setFormError("");
+    setShowModal(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -78,18 +100,32 @@ function App() {
 
     setSubmitting(true);
     try {
-      await invoke("add_member", {
-        member: {
-          name: formData.name.trim(),
-          phone: formData.phone.trim(),
-          level: formData.level,
-          balance: formData.balance,
-        },
-      });
+      if (isEditing && formData.id) {
+        // 更新会员
+        await invoke("update_member", {
+          member: {
+            id: formData.id,
+            name: formData.name.trim(),
+            phone: formData.phone.trim(),
+            level: formData.level,
+            balance: formData.balance,
+          },
+        });
+      } else {
+        // 添加会员
+        await invoke("add_member", {
+          member: {
+            name: formData.name.trim(),
+            phone: formData.phone.trim(),
+            level: formData.level,
+            balance: formData.balance,
+          },
+        });
+      }
       
       // 重置表单并关闭弹窗
       setFormData({ name: "", phone: "", level: "普通", balance: 0 });
-      setShowAddModal(false);
+      setShowModal(false);
       
       // 刷新会员列表
       await loadMembers();
@@ -97,7 +133,7 @@ function App() {
       if (error.includes("UNIQUE constraint failed")) {
         setFormError("该手机号已存在");
       } else {
-        setFormError("添加失败: " + error);
+        setFormError((isEditing ? "更新" : "添加") + "失败: " + error);
       }
     } finally {
       setSubmitting(false);
@@ -121,31 +157,34 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>💈 理发管家</h1>
+        <div className="header-content">
+          <h1>💈 理发管家</h1>
+          <p className="header-subtitle">理发店会员管理系统</p>
+        </div>
         <nav className="nav-tabs">
           <button
             className={activeTab === "members" ? "active" : ""}
             onClick={() => setActiveTab("members")}
           >
-            会员管理
+            👥 会员管理
           </button>
           <button
             className={activeTab === "records" ? "active" : ""}
             onClick={() => setActiveTab("records")}
           >
-            消费记录
+            📋 消费记录
           </button>
           <button
             className={activeTab === "stats" ? "active" : ""}
             onClick={() => setActiveTab("stats")}
           >
-            数据统计
+            📊 数据统计
           </button>
           <button
             className={activeTab === "settings" ? "active" : ""}
             onClick={() => setActiveTab("settings")}
           >
-            系统设置
+            ⚙️ 系统设置
           </button>
         </nav>
       </header>
@@ -154,20 +193,26 @@ function App() {
         {activeTab === "members" && (
           <div className="members-section">
             <div className="section-header">
-              <h2>会员列表</h2>
+              <div>
+                <h2>会员列表</h2>
+                <p className="section-desc">管理店铺会员信息</p>
+              </div>
               <div className="actions">
                 <button 
                   className="btn btn-primary"
-                  onClick={() => setShowAddModal(true)}
+                  onClick={openAddModal}
                 >
-                  + 添加会员
+                  ➕ 添加会员
                 </button>
                 <button className="btn btn-secondary">📥 导入Excel</button>
               </div>
             </div>
 
             {loading ? (
-              <div className="loading">加载中...</div>
+              <div className="loading">
+                <div className="loading-spinner"></div>
+                <p>加载中...</p>
+              </div>
             ) : (
               <div className="members-table-container">
                 <table className="members-table">
@@ -186,14 +231,16 @@ function App() {
                     {members.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="empty-state">
-                          暂无会员数据，点击"添加会员"或"导入Excel"开始录入
+                          <div className="empty-icon">📝</div>
+                          <p>暂无会员数据</p>
+                          <p className="empty-hint">点击"添加会员"或"导入Excel"开始录入</p>
                         </td>
                       </tr>
                     ) : (
                       members.map((member) => (
                         <tr key={member.id}>
-                          <td>{member.name}</td>
-                          <td>{member.phone}</td>
+                          <td className="name-cell">{member.name}</td>
+                          <td className="phone-cell">{member.phone}</td>
                           <td>
                             <span className={`level-badge level-${member.level}`}>
                               {member.level}
@@ -206,8 +253,13 @@ function App() {
                               ? new Date(member.last_visit).toLocaleDateString()
                               : "-"}
                           </td>
-                          <td>
-                            <button className="btn btn-small">编辑</button>
+                          <td className="actions-cell">
+                            <button 
+                              className="btn btn-small"
+                              onClick={() => openEditModal(member)}
+                            >
+                              编辑
+                            </button>
                             <button 
                               className="btn btn-small btn-danger"
                               onClick={() => handleDelete(member.id, member.name)}
@@ -228,7 +280,7 @@ function App() {
         {activeTab === "records" && (
           <div className="records-section">
             <h2>消费记录</h2>
-            <p className="placeholder">消费记录功能开发中...</p>
+            <p className="placeholder">功能开发中...</p>
           </div>
         )}
 
@@ -237,14 +289,23 @@ function App() {
             <h2>数据统计</h2>
             <div className="stats-cards">
               <div className="stat-card">
+                <div className="stat-icon">👥</div>
                 <div className="stat-value">{members.length}</div>
                 <div className="stat-label">总会员数</div>
               </div>
               <div className="stat-card">
+                <div className="stat-icon">💰</div>
                 <div className="stat-value">
                   ¥{members.reduce((sum, m) => sum + m.balance, 0).toFixed(2)}
                 </div>
                 <div className="stat-label">会员总余额</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">📈</div>
+                <div className="stat-value">
+                  {members.filter(m => m.last_visit).length}
+                </div>
+                <div className="stat-label">本月活跃会员</div>
               </div>
             </div>
           </div>
@@ -253,19 +314,19 @@ function App() {
         {activeTab === "settings" && (
           <div className="settings-section">
             <h2>系统设置</h2>
-            <p className="placeholder">系统设置功能开发中...</p>
+            <p className="placeholder">功能开发中...</p>
           </div>
         )}
       </main>
 
-      {/* 添加会员弹窗 */}
-      {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+      {/* 添加/编辑会员弹窗 */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>添加新会员</h3>
-              <button className="modal-close" onClick={() => setShowAddModal(false)}>
-                ×
+              <h3>{isEditing ? "编辑会员" : "添加新会员"}</h3>
+              <button className="modal-close" onClick={() => setShowModal(false)}>
+                ✕
               </button>
             </div>
             <form onSubmit={handleSubmit}>
@@ -293,7 +354,9 @@ function App() {
                     onChange={handleInputChange}
                     placeholder="请输入11位手机号"
                     maxLength={11}
+                    disabled={isEditing}
                   />
+                  {isEditing && <small className="form-hint">编辑时不能修改手机号</small>}
                 </div>
 
                 <div className="form-group">
@@ -307,16 +370,20 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>初始余额</label>
-                  <input
-                    type="number"
-                    name="balance"
-                    value={formData.balance}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                  />
+                  <label>余额</label>
+                  <div className="balance-input">
+                    <span className="balance-prefix">¥</span>
+                    <input
+                      type="number"
+                      name="balance"
+                      value={formData.balance}
+                      onChange={handleInputChange}
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <small className="form-hint">余额不能小于0</small>
                 </div>
               </div>
 
@@ -324,7 +391,7 @@ function App() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => setShowModal(false)}
                   disabled={submitting}
                 >
                   取消
@@ -334,7 +401,7 @@ function App() {
                   className="btn btn-primary"
                   disabled={submitting}
                 >
-                  {submitting ? "保存中..." : "保存"}
+                  {submitting ? "保存中..." : (isEditing ? "更新" : "保存")}
                 </button>
               </div>
             </form>
