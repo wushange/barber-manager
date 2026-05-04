@@ -42,8 +42,8 @@ interface RecordFormData {
 interface ImportMember {
   name: string;
   phone: string;
-  level?: string;
-  balance?: number;
+  level: string;
+  balance: number;
 }
 
 function App() {
@@ -105,7 +105,7 @@ function App() {
   // Excel导入状态
   const [showImportModal, setShowImportModal] = useState(false);
   const [importStep, setImportStep] = useState<"upload" | "mapping" | "preview" | "result">("upload");
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [, setImportFile] = useState<File | null>(null);
   const [importData, setImportData] = useState<any[]>([]);
   const [importMapping, setImportMapping] = useState<{name: string; phone: string; level: string; balance: string}>({
     name: "",
