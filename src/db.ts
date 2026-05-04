@@ -1,10 +1,6 @@
-// 纯网页版本数据库 - 使用 localStorage 存储
+// 本地服务器版本数据库 - 使用 Node.js + JSON 文件存储
 
-const DB_KEYS = {
-  MEMBERS: 'bm_members',
-  SERVICES: 'bm_services',
-  RECORDS: 'bm_records',
-};
+const API_BASE = '';
 
 // 会员接口
 export interface Member {
@@ -38,174 +34,139 @@ export interface Record {
   created_at: string;
 }
 
-// 初始化默认数据
+// API 请求辅助函数
+async function apiGet(endpoint: string) {
+  const res = await fetch(`${API_BASE}/api/${endpoint}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function apiPost(endpoint: string, data: any) {
+  const res = await fetch(`${API_BASE}/api/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function apiPut(endpoint: string, id: number, data: any) {
+  const res = await fetch(`${API_BASE}/api/${endpoint}?id=${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function apiDelete(endpoint: string, id: number) {
+  const res = await fetch(`${API_BASE}/api/${endpoint}?id=${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// 初始化（服务器会自动创建默认数据）
 export function initDefaultData() {
-  if (!localStorage.getItem(DB_KEYS.SERVICES)) {
-    const defaultServices: Service[] = [
-      { id: 1, name: '洗剪吹', price: 35, category: '基础' },
-      { id: 2, name: '单剪', price: 25, category: '基础' },
-      { id: 3, name: '洗头', price: 15, category: '基础' },
-      { id: 4, name: '染发', price: 128, category: '烫染' },
-      { id: 5, name: '烫发', price: 168, category: '烫染' },
-      { id: 6, name: '护理', price: 88, category: '护理' },
-    ];
-    localStorage.setItem(DB_KEYS.SERVICES, JSON.stringify(defaultServices));
-  }
+  // 服务器会自动处理
 }
 
 // 获取所有会员
-export function getMembers(): Member[] {
-  const data = localStorage.getItem(DB_KEYS.MEMBERS);
-  return data ? JSON.parse(data) : [];
-}
-
-// 保存所有会员
-export function saveMembers(members: Member[]) {
-  localStorage.setItem(DB_KEYS.MEMBERS, JSON.stringify(members));
+export async function getMembers(): Promise<Member[]> {
+  return apiGet('members');
 }
 
 // 添加会员
-export function addMember(member: Omit<Member, 'id' | 'created_at'>): Member {
-  const members = getMembers();
-  const newMember: Member = {
-    ...member,
-    id: Date.now(),
-    created_at: new Date().toISOString(),
-  };
-  members.push(newMember);
-  saveMembers(members);
-  return newMember;
+export async function addMember(member: Omit<Member, 'id' | 'created_at'>): Promise<Member> {
+  return apiPost('members', member);
 }
 
 // 更新会员
-export function updateMember(id: number, updates: Partial<Member>): Member | null {
-  const members = getMembers();
-  const index = members.findIndex(m => m.id === id);
-  if (index === -1) return null;
-  members[index] = { ...members[index], ...updates };
-  saveMembers(members);
-  return members[index];
+export async function updateMember(id: number, updates: Partial<Member>): Promise<Member | null> {
+  return apiPut('members', id, updates);
 }
 
 // 删除会员
-export function deleteMember(id: number): boolean {
-  const members = getMembers();
-  const filtered = members.filter(m => m.id !== id);
-  if (filtered.length === members.length) return false;
-  saveMembers(filtered);
-  // 同时删除相关消费记录
-  const records = getRecords();
-  saveRecords(records.filter(r => r.member_id !== id));
+export async function deleteMember(id: number): Promise<boolean> {
+  await apiDelete('members', id);
   return true;
 }
 
 // 通过手机尾号搜索会员
-export function searchMembersByPhone(phoneTail: string): Member[] {
-  const members = getMembers();
+export async function searchMembersByPhone(phoneTail: string): Promise<Member[]> {
+  const members = await getMembers();
   if (!phoneTail) return members;
   return members.filter(m => m.phone.endsWith(phoneTail));
 }
 
 // 获取所有服务
-export function getServices(): Service[] {
-  const data = localStorage.getItem(DB_KEYS.SERVICES);
-  return data ? JSON.parse(data) : [];
-}
-
-// 保存所有服务
-export function saveServices(services: Service[]) {
-  localStorage.setItem(DB_KEYS.SERVICES, JSON.stringify(services));
+export async function getServices(): Promise<Service[]> {
+  return apiGet('services');
 }
 
 // 添加服务
-export function addService(service: Omit<Service, 'id'>): Service {
-  const services = getServices();
-  const newService: Service = {
-    ...service,
-    id: Date.now(),
-  };
-  services.push(newService);
-  saveServices(services);
-  return newService;
+export async function addService(service: Omit<Service, 'id'>): Promise<Service> {
+  return apiPost('services', service);
 }
 
 // 更新服务
-export function updateService(id: number, updates: Partial<Service>): Service | null {
-  const services = getServices();
-  const index = services.findIndex(s => s.id === id);
-  if (index === -1) return null;
-  services[index] = { ...services[index], ...updates };
-  saveServices(services);
-  return services[index];
+export async function updateService(id: number, updates: Partial<Service>): Promise<Service | null> {
+  return apiPut('services', id, updates);
 }
 
 // 删除服务
-export function deleteService(id: number): boolean {
-  const services = getServices();
-  const filtered = services.filter(s => s.id !== id);
-  if (filtered.length === services.length) return false;
-  saveServices(filtered);
+export async function deleteService(id: number): Promise<boolean> {
+  await apiDelete('services', id);
   return true;
 }
 
 // 获取所有消费记录
-export function getRecords(): Record[] {
-  const data = localStorage.getItem(DB_KEYS.RECORDS);
-  return data ? JSON.parse(data) : [];
-}
-
-// 保存所有消费记录
-export function saveRecords(records: Record[]) {
-  localStorage.setItem(DB_KEYS.RECORDS, JSON.stringify(records));
+export async function getRecords(): Promise<Record[]> {
+  return apiGet('records');
 }
 
 // 添加消费记录
-export function addRecord(record: Omit<Record, 'id' | 'created_at'>): Record {
-  const records = getRecords();
-  const newRecord: Record = {
-    ...record,
-    id: Date.now(),
-    created_at: new Date().toISOString(),
-  };
-  records.unshift(newRecord);
-  saveRecords(records);
-
-  // 更新会员最后访问时间
-  updateMember(record.member_id, { last_visit: new Date().toISOString() });
-
-  return newRecord;
+export async function addRecord(record: Omit<Record, 'id' | 'created_at'>): Promise<Record> {
+  return apiPost('records', record);
 }
 
 // 删除消费记录
-export function deleteRecord(id: number): boolean {
-  const records = getRecords();
-  const filtered = records.filter(r => r.id !== id);
-  if (filtered.length === records.length) return false;
-  saveRecords(filtered);
+export async function deleteRecord(id: number): Promise<boolean> {
+  await apiDelete('records', id);
   return true;
 }
 
 // 导出所有数据
-export function exportAllData() {
-  return {
-    members: getMembers(),
-    services: getServices(),
-    records: getRecords(),
-    exportTime: new Date().toISOString(),
-  };
+export async function exportAllData() {
+  const res = await fetch(`${API_BASE}/api/export`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `barber-backup-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // 导入数据
-export function importAllData(data: { members?: Member[], services?: Service[], records?: Record[] }) {
-  if (data.members) saveMembers(data.members);
-  if (data.services) saveServices(data.services);
-  if (data.records) saveRecords(data.records);
+export async function importAllData(data: { members?: Member[], services?: Service[], records?: Record[] }) {
+  return apiPost('import', data);
 }
 
 // 清空所有数据
-export function clearAllData() {
-  localStorage.removeItem(DB_KEYS.MEMBERS);
-  localStorage.removeItem(DB_KEYS.SERVICES);
-  localStorage.removeItem(DB_KEYS.RECORDS);
-  initDefaultData();
+export async function clearAllData() {
+  return apiPost('clear', {});
+}
+
+// 手动备份
+export async function doBackup(): Promise<{ success: boolean; file: string; message: string }> {
+  return apiPost('backup', {});
+}
+
+// 获取备份列表
+export async function getBackups(): Promise<{ name: string; path: string; time: string; size: number }[]> {
+  return apiGet('backups');
 }

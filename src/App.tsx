@@ -123,11 +123,23 @@ function App() {
     loadData();
   }, []);
 
-  function loadData() {
-    setMembers(getMembers());
-    setServices(getServices());
-    setRecords(getRecords());
-    setLoading(false);
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [m, s, r] = await Promise.all([
+        getMembers(),
+        getServices(),
+        getRecords(),
+      ]);
+      setMembers(m);
+      setServices(s);
+      setRecords(r);
+    } catch (error) {
+      console.error("加载数据失败:", error);
+      alert("连接服务器失败，请确保服务器已启动");
+    } finally {
+      setLoading(false);
+    }
   }
 
   // 统计数据
@@ -190,7 +202,7 @@ function App() {
 
     try {
       if (isEditing && formData.id) {
-        updateMember(formData.id, formData);
+        await updateMember(formData.id, formData);
       } else {
         // 检查手机号是否已存在
         const existing = members.find(m => m.phone === formData.phone);
@@ -199,9 +211,9 @@ function App() {
           setSubmitting(false);
           return;
         }
-        addMember(formData);
+        await addMember(formData);
       }
-      loadData();
+      await loadData();
       setShowModal(false);
     } catch (error) {
       setFormError("操作失败: " + String(error));
@@ -215,8 +227,8 @@ function App() {
     if (!confirm("确定要删除该会员吗？此操作不可恢复。")) return;
 
     try {
-      deleteMember(id);
-      loadData();
+      await deleteMember(id);
+      await loadData();
     } catch (error) {
       alert("删除失败: " + String(error));
     }
@@ -265,7 +277,7 @@ function App() {
         return;
       }
 
-      addRecord({
+      await addRecord({
         member_id: recordForm.member_id,
         member_name: member.name,
         service_id: recordForm.service_id,
@@ -275,7 +287,7 @@ function App() {
         note: recordForm.note,
       });
 
-      loadData();
+      await loadData();
       setShowRecordModal(false);
     } catch (error) {
       setRecordError("添加失败: " + String(error));
@@ -289,8 +301,8 @@ function App() {
     if (!confirm("确定要删除该记录吗？")) return;
 
     try {
-      deleteRecord(id);
-      loadData();
+      await deleteRecord(id);
+      await loadData();
     } catch (error) {
       alert("删除失败: " + String(error));
     }
@@ -330,11 +342,11 @@ function App() {
 
     try {
       if (isEditingService && serviceForm.id) {
-        updateService(serviceForm.id, serviceForm);
+        await updateService(serviceForm.id, serviceForm);
       } else {
-        addService(serviceForm as Omit<Service, 'id'>);
+        await addService(serviceForm as Omit<Service, 'id'>);
       }
-      loadData();
+      await loadData();
       setShowServiceModal(false);
     } catch (error) {
       setServiceError("操作失败: " + String(error));
@@ -348,8 +360,8 @@ function App() {
     if (!confirm("确定要删除该服务吗？")) return;
 
     try {
-      deleteService(id);
-      loadData();
+      await deleteService(id);
+      await loadData();
     } catch (error) {
       alert("删除失败: " + String(error));
     }
@@ -411,7 +423,7 @@ function App() {
           skipped++;
           continue;
         }
-        addMember(member);
+        await addMember(member);
         success++;
       } catch (error) {
         errors.push(`${member.name}: ${String(error)}`);
@@ -421,32 +433,25 @@ function App() {
     setImportResult({ success, skipped, errors });
     setImporting(false);
     setImportStep("result");
-    loadData();
+    await loadData();
   }
 
   // 导出数据
-  function exportData() {
-    const data = exportAllData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `barber-backup-${new Date().toISOString().split("T")[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportData() {
+    await exportAllData();
   }
 
   // 导入数据
-  function importDataFromFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function importDataFromFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        importAllData(data);
-        loadData();
+        await importAllData(data);
+        await loadData();
         alert("数据导入成功！");
       } catch (error) {
         alert("导入失败: " + String(error));
@@ -456,12 +461,12 @@ function App() {
   }
 
   // 清空所有数据
-  function handleClearAll() {
+  async function handleClearAll() {
     if (!confirm("⚠️ 警告：这将清空所有数据，包括会员、服务和消费记录！\n\n确定要继续吗？")) return;
     if (!confirm("再次确认：真的要清空所有数据吗？此操作不可恢复！")) return;
 
-    clearAllData();
-    loadData();
+    await clearAllData();
+    await loadData();
     alert("所有数据已清空！");
   }
 
@@ -471,7 +476,7 @@ function App() {
     setHasSearched(false);
 
     try {
-      const results = searchMembersByPhone(searchPhoneTail);
+      const results = await searchMembersByPhone(searchPhoneTail);
       setSearchResults(results);
       setHasSearched(true);
     } catch (error) {
@@ -554,7 +559,7 @@ function App() {
         const service = services.find(s => s.id === item.serviceId);
         if (!service) continue;
 
-        addRecord({
+        await addRecord({
           member_id: selectedMember.id,
           member_name: selectedMember.name,
           service_id: item.serviceId,
@@ -569,7 +574,7 @@ function App() {
       let newBalance = selectedMember.balance;
       if (checkoutPayment === "余额") {
         newBalance = selectedMember.balance - totalAmount;
-        updateMember(selectedMember.id, { balance: newBalance });
+        await updateMember(selectedMember.id, { balance: newBalance });
       }
 
       // 计算消费的服务名称列表
@@ -596,7 +601,7 @@ function App() {
       setHasSearched(false);
 
       // 刷新数据
-      loadData();
+      await loadData();
     } catch (error) {
       setCheckoutToast({
         type: "error",
