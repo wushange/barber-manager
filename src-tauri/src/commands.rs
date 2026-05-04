@@ -22,6 +22,14 @@ pub struct MemberWithInfo {
     pub last_visit: Option<String>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ImportMember {
+    pub name: String,
+    pub phone: String,
+    pub level: Option<String>,
+    pub balance: Option<f64>,
+}
+
 #[tauri::command]
 pub fn greet(name: &str) -> String {
     format!("Hello, {}! Welcome to 理发管家!", name)
@@ -42,6 +50,40 @@ pub fn get_members(db_path: tauri::State<PathBuf>) -> Result<Vec<MemberWithInfo>
     ).map_err(|e| e.to_string())?;
     
     let rows = stmt.query_map([], |row| {
+        Ok(MemberWithInfo {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            phone: row.get(2)?,
+            level: row.get(3)?,
+            balance: row.get(4)?,
+            created_at: row.get(5)?,
+            last_visit: row.get(6)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    
+    let mut members = Vec::new();
+    for row in rows {
+        members.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(members)
+}
+
+#[tauri::command]
+pub fn search_members_by_phone(
+    db_path: tauri::State<PathBuf>,
+    phone_tail: String,
+) -> Result<Vec<MemberWithInfo>, String> {
+    let conn = open_db(db_path.inner())?;
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.name, m.phone, m.level, m.balance, m.created_at,
+                (SELECT MAX(created_at) FROM records WHERE member_id = m.id) as last_visit
+         FROM members m
+         WHERE m.phone LIKE ?1
+         ORDER BY m.id DESC"
+    ).map_err(|e| e.to_string())?;
+    
+    let pattern = format!("%{}", phone_tail);
+    let rows = stmt.query_map([pattern], |row| {
         Ok(MemberWithInfo {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -131,6 +173,45 @@ pub fn get_services(db_path: tauri::State<PathBuf>) -> Result<Vec<(i32, String, 
 }
 
 #[tauri::command]
+pub fn add_service(
+    db_path: tauri::State<PathBuf>,
+    name: String,
+    price: f64,
+    category: String,
+) -> Result<i32, String> {
+    let conn = open_db(db_path.inner())?;
+    conn.execute(
+        "INSERT INTO services (name, price, category) VALUES (?1, ?2, ?3)",
+        rusqlite::params![name, price, category],
+    ).map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid() as i32)
+}
+
+#[tauri::command]
+pub fn update_service(
+    db_path: tauri::State<PathBuf>,
+    id: i32,
+    name: String,
+    price: f64,
+    category: String,
+) -> Result<(), String> {
+    let conn = open_db(db_path.inner())?;
+    conn.execute(
+        "UPDATE services SET name = ?1, price = ?2, category = ?3 WHERE id = ?4",
+        rusqlite::params![name, price, category, id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_service(db_path: tauri::State<PathBuf>, id: i32) -> Result<(), String> {
+    let conn = open_db(db_path.inner())?;
+    conn.execute("DELETE FROM services WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_records(db_path: tauri::State<PathBuf>, member_id: Option<i32>) -> Result<Vec<(i32, String, String, f64, String, String, String)>, String> {
     let conn = open_db(db_path.inner())?;
     
@@ -168,4 +249,44 @@ pub fn get_records(db_path: tauri::State<PathBuf>, member_id: Option<i32>) -> Re
     }
     
     Ok(records)
+}
+
+#[tauri::command]
+pub fn batch_import_members(
+    db_path: tauri::State<PathBuf>,
+    members: Vec<ImportMember>,
+) -> Result<(usize, usize), String> {
+    let conn = open_db(db_path.inner())?;
+    let mut imported = 0;
+    let mut skipped = 0;
+    
+    for member in members {
+        // 检查手机号是否已存在
+        let exists: bool = conn.query_row(
+            "SELECT 1 FROM members WHERE phone = ?1",
+            rusqlite::params![member.phone],
+            |_| Ok(true),
+        ).unwrap_or(false);
+        
+        if exists {
+            skipped += 1;
+            continue;
+        }
+        
+        // 插入会员
+        match conn.execute(
+            "INSERT INTO members (name, phone, level, balance) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                member.name,
+                member.phone,
+                member.level.unwrap_or("普通".to_string()),
+                member.balance.unwrap_or(0.0)
+            ],
+        ) {
+            Ok(_) => imported += 1,
+            Err(_) => skipped += 1,
+        }
+    }
+    
+    Ok((imported, skipped))
 }

@@ -1,7 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::Manager;
-use std::path::PathBuf;
 
 pub mod commands;
 pub mod db;
@@ -14,12 +13,17 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             get_members,
+            search_members_by_phone,
             add_member,
             update_member,
             delete_member,
             add_record,
             get_services,
+            add_service,
+            update_service,
+            delete_service,
             get_records,
+            batch_import_members,
         ])
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
